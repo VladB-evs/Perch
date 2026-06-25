@@ -77,4 +77,4 @@ For questions or suggestions, reach out via GitHub Issues.
 
 ---
 
-**Made with ❤️ by [VladB-evs](https://github.com/VladB-evs)**
+**Made with ❤️ by [VladB-evs](https://github.com/VladB-evs)** and Claude for bug tracking and fixing 😭
