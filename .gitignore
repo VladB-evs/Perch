@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+
+# Xcode build output & derived data
+build/
+.build-dmg/
+DerivedData/
+
+# Xcode user-specific state
+xcuserdata/
+*.xcuserstate
+
+# Packaged artifacts
+*.dmg
+.dmg-background.png
