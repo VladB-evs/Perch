@@ -42,7 +42,3 @@ Contributions are welcome. Please open issues for bug reports or feature request
 ## License
 
 No license is included in this repository yet. If you want a license, add a `LICENSE` file (for example, the MIT License) or let me know which license you'd like and I can add it.
-
----
-
-If you'd like a longer README (screenshots, roadmap, packaging instructions), tell me what you'd like included and I can expand this file or add documentation files.
