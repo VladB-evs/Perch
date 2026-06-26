@@ -88,19 +88,36 @@ struct MenuBarView: View {
 
     /// One existing task: rounded checkbox + inline-editable title.
     private func taskRow(_ item: TodoItem) -> some View {
-        HStack(spacing: 12) {
-            checkbox(isOn: completingIDs.contains(item.id)) {
+        let isCompleting = completingIDs.contains(item.id)
+        return HStack(spacing: 12) {
+            checkbox(isOn: isCompleting) {
                 complete(item.id)
             }
 
-            TextField("", text: titleBinding(for: item.id))
-                .font(.system(size: 16))
-                .textFieldStyle(.plain)
-                .focused($focusedField, equals: .task(item.id))
-                .onSubmit { focusedField = nil }
+            if isCompleting {
+                // While checking off: dimmed title with an animated strikethrough.
+                CompletingTitle(text: item.title)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                TextField("", text: titleBinding(for: item.id))
+                    .font(.system(size: 16))
+                    .textFieldStyle(.plain)
+                    .focused($focusedField, equals: .task(item.id))
+                    .onSubmit { focusedField = nil }
+                    .onKeyPress(.delete) {
+                        // Backspace on an already-empty task: jump up; the now
+                        // focus-less empty row is removed by onChange below.
+                        guard taskTitle(item.id).isEmpty else { return .ignored }
+                        focusUp(from: item.id)
+                        return .handled
+                    }
+            }
         }
-        .rowStyle(highlighted: focusedField == .task(item.id))
-        .transition(.opacity)
+        .rowStyle(highlighted: !isCompleting && focusedField == .task(item.id))
+        .transition(.asymmetric(
+            insertion: .scale(scale: 0.85).combined(with: .opacity),
+            removal: .opacity
+        ))
     }
 
     /// The always-present empty slot for adding the next task.
@@ -114,8 +131,14 @@ struct MenuBarView: View {
                 .textFieldStyle(.plain)
                 .focused($focusedField, equals: .draft)
                 .onSubmit(commitDraft)
+                .onKeyPress(.delete) {
+                    // Backspace on the empty slot jumps to the last task.
+                    guard draftTitle.isEmpty else { return .ignored }
+                    focusUp(from: nil)
+                    return .handled
+                }
         }
-        .rowStyle(highlighted: focusedField == .draft)
+        .rowStyle(highlighted: false)
     }
 
     // MARK: - Checkbox
@@ -140,6 +163,7 @@ struct MenuBarView: View {
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(.white)
                     .opacity(isOn ? 1 : 0)
+                    .scaleEffect(isOn ? 1 : 0.3)   // springs in for a little "pop"
             )
             .frame(width: 26, height: 26)
     }
@@ -154,6 +178,29 @@ struct MenuBarView: View {
         text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// Moves focus to the task above the current one — or the last task when
+    /// coming from the empty slot — so pressing Delete on an empty row walks up
+    /// the list. The emptied row left behind is removed by the focus-change
+    /// handler in `body`.
+    private func focusUp(from currentTaskID: UUID?) {
+        let ids = store.items.map(\.id)
+        guard !ids.isEmpty else { focusedField = nil; return }
+
+        guard let currentTaskID, let index = ids.firstIndex(of: currentTaskID) else {
+            // Coming from the empty slot → focus the last task.
+            focusedField = .task(ids[ids.count - 1])
+            return
+        }
+
+        if index > 0 {
+            focusedField = .task(ids[index - 1])     // the task above
+        } else if ids.count > 1 {
+            focusedField = .task(ids[1])             // was the top one → take the next
+        } else {
+            focusedField = nil                       // deleting the only task
+        }
+    }
+
     private func titleBinding(for id: UUID) -> Binding<String> {
         Binding(
             get: { taskTitle(id) },
@@ -164,24 +211,53 @@ struct MenuBarView: View {
     /// Commits the empty slot into a real task and keeps focus there so the
     /// user can keep adding tasks one after another.
     private func commitDraft() {
-        store.add(title: draftTitle)
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.6)) {
+            store.add(title: draftTitle)
+        }
         draftTitle = ""
         focusedField = .draft
     }
 
-    /// Marks a task complete: briefly shows the check, then fades the row out
-    /// and removes it from the list — which also deletes it from local storage.
+    /// Marks a task complete: pops the checkbox and draws the strikethrough,
+    /// lets it sit a beat, then fades the row out and removes it — which also
+    /// deletes it from local storage.
     private func complete(_ id: UUID) {
-        withAnimation(.easeInOut(duration: 0.15)) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
             _ = completingIDs.insert(id)
         }
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(0.3))
-            withAnimation(.easeInOut(duration: 0.3)) {
+            try? await Task.sleep(for: .seconds(0.55))
+            withAnimation(.easeInOut(duration: 0.35)) {
                 store.delete(id: id)
             }
             completingIDs.remove(id)
         }
+    }
+}
+
+// MARK: - Completing title
+
+/// The task title shown while it is being checked off: dimmed, with a
+/// strikethrough that animates across from leading to trailing edge.
+private struct CompletingTitle: View {
+    let text: String
+    @State private var struck = false
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 16))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(.secondary)
+                    .frame(height: 1.5)
+                    .scaleEffect(x: struck ? 1 : 0, anchor: .leading)
+            }
+            .onAppear {
+                withAnimation(.easeOut(duration: 0.28)) { struck = true }
+            }
     }
 }
 
